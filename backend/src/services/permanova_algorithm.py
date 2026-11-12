@@ -36,10 +36,13 @@ def upper_tail_p(observed,null):
     threshold=float(observed-tolerance);extreme=int(np.sum(values>=threshold))
     return {"p":(extreme+1)/(len(values)+1),"extreme":extreme,"resolution":1/(len(values)+1),"comparison_threshold":threshold,"tie_tolerance":float(tolerance),"tail":"R²上尾含并列，+1；并列保护为64×机器epsilon×max(1,观测与null绝对R²)，不用于SST拒绝。"}
 
-def permutation_test(clr,labels,permutations=199,seed=2026):
+def permutation_schedule(labels,permutations=199,seed=2026):
     if type(permutations) is not int or not 199<=permutations<=999:raise ValueError("置换数须为199–999整数")
     if type(seed) is not int or not 0<=seed<=2147483647:raise ValueError("种子须为非负32位整数")
     if len(labels)*permutations>150000:raise ValueError("样本数×置换数不能超过150000")
-    observed=permanova_statistics(clr,labels);rng=np.random.default_rng(seed);null=[]
-    for _ in range(permutations):null.append(permanova_statistics(clr,rng.permutation(labels).tolist())['R2'])
+    rng=np.random.default_rng(seed)
+    return [rng.permutation(labels).tolist() for _ in range(permutations)]
+
+def permutation_test(clr,labels,permutations=199,seed=2026):
+    observed=permanova_statistics(clr,labels);null=[permanova_statistics(clr,permuted)['R2'] for permuted in permutation_schedule(labels,permutations,seed)]
     return {**observed,"null_R2":null,"permutations":permutations,**upper_tail_p(observed['R2'],null)}

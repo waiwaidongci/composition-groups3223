@@ -5,3 +5,4 @@ from .component import ComponentSpec
 from .sample import CompositionSample
 from .composition_run import CompositionRun
 from .note import ResampleNote
+from .comparison import SensitivityComparison

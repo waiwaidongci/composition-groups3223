@@ -17,9 +17,9 @@ docker compose exec -T backend python -m scripts.seed_demo
 
 | 角色 | 账号 | 密码 | 典型动作 |
 |---|---|---|---|
-| admin 材料负责人 | admin@lisui.demo | Lisui2026! | 六页；创建研究、批注、提交、批准/退回补样 |
-| analyst 组成研究员 | analyst@lisui.demo | Lisui2026! | 六页；来源核对、配置δ/B、提交运行和补样说明 |
-| viewer 补样阅读者 | viewer@lisui.demo | Lisui2026! | 六页只读；下载获批完成研究CSV |
+| admin 材料负责人 | admin@lisui.demo | Lisui2026! | 七页；创建研究、批注、提交、批准/退回补样 |
+| analyst 组成研究员 | analyst@lisui.demo | Lisui2026! | 七页；来源核对、配置δ/B、提交运行和补样说明、建立敏感性比较 |
+| viewer 补样阅读者 | viewer@lisui.demo | Lisui2026! | 七页只读；下载获批完成研究CSV |
 
 JWT角色在后端执行，viewer写入403、analyst审批403、未获批导出403、重复审批409。登录/批注/排队/worker完成/建议与审批留审计。登录IP每分钟最多30次，另有统一错误中间件。请求校验422只返回loc/msg文本，不回显含NaN/Inf的input。部署时修改JWT_SECRET及Compose内MySQL口令。
 
@@ -31,12 +31,13 @@ JWT角色在后端执行，viewer写入403、analyst审批403、未获批导出4
 4. 09:15 为LS-02冻结δ=.001、B199、seed2026，创建“三工艺组成复核”；系统保留原量、闭合份额、替换后份额和CLR。
 5. 09:16 独立worker固定各组规模置换标签，保存199个null R²，以R²上尾含并列+1求全局p。
 6. 09:20 真实HTTP运行的LS-02得到R²约.02814246、pseudo-F约.99903、p=.435。这份数据未给出强组差证据，仍可为未检出限与δ假设做独立补样。
+7. 09:22 顾砚一次建立LS-02零替换敏感性比较，冻结同一72样本、三组规模与199次共用置换序列，δ取.0001/.001/.01/.1；同一次计算内δ从.001升到.01时结论由“未拒绝”变为“拒绝”，说明差异可来自替换假设。
 7. 09:25 写三工艺同规模补样说明，注明仅报告组内距离描述、未正式检验离散度同质、不将组差当工艺原因。
 8. 10:00 罗岑批准归档，程禾以阅读者下载 `composition-run-N.csv`，供独立复配补样核对。
 
-## 六页与五实体
+## 七页与六实体
 
-组成总览、相份额来源、替换与置换、组间证据、复配补样、研究留痕。`CompositionStudy / ComponentSpec / CompositionSample / CompositionRun / ResampleNote` 均贯穿表、model、schema、service、route、前端API、store与页面/组件，另有User/Audit。来源数值/成分/组标签只读核对，样本批注可写；运行创建时冻结完整快照，后续批注不改历史结果。
+组成总览、相份额来源、替换与置换、组间证据、复配补样、研究留痕、敏感性比较。`CompositionStudy / ComponentSpec / CompositionSample / CompositionRun / ResampleNote / SensitivityComparison` 均贯穿表、model、schema、service、route、前端API、store与页面/组件，另有User/Audit。来源数值/成分/组标签只读核对，样本批注可写；运行与敏感性比较创建时冻结完整快照，后续批注不改历史结果。
 
 seed为3研究×3工艺×24样本=216行、15个成分定义。LS-01正组成，LS-02含12行零分量（每组4行），LS-03固定[50,20,15,10,5]恒定边界。固定种子290/291/292生成，五相互斥，其余相为剩余通道，仅解释相对组成。自然键email、study code、(study,sample code)、(study,component code/position)、基线run name；seed只补缺失，不覆盖用户批注/已批准建议。`SEED_DEMO=true`启动执行一次，失败记日志，也可独立重复执行。
 
@@ -73,6 +74,16 @@ B199–999次均匀置换标签，组规模保持，固定seed与自然键排序
 
 当前算法/指纹版本为 `closure-replacement-clr-permanova-v2`。v1在真实6点夹具的数学并列漏计曾被独立复核发现；v2修复、空卷重跑及原证据详见TESTING，不用历史v1运行冒充最终结果。
 
+## 零替换敏感性比较
+
+同一研究一次提交2–8个不同δ。创建时冻结完整研究快照（样本、组别、组规模、原始量），所有δ共用同一份置换标签序列（同一B与seed只生成一次，SHA256记录`schedule_hash`），逐比例独立执行零替换、CLR与PERMANOVA上尾p；每比例保存R²、pseudo-F/F_status、p、极端计数与组内距离描述。δ按数值升序计算与展示。
+
+判定口径在比较结果中显式声明为α=0.05：`p<0.05`记“拒绝全局无组差”，否则“未拒绝”；不附加其他阈值。相邻或非相邻比例出现不同结论时，`summary.changes`记录变化区间，`summary.changed=true`；全部同结论时仍提示这不等于稳健。
+
+原子发布：任一比例失败（例如δ≥1/z、数值下溢或PERMANOVA边界），整组状态failed，只有错误与失败依据可读，不发布逐比例统计数据，也不开放补样审批、补样导出或新建补样建议，直至失败比较重试完成。重试以`retry_of`新建同快照、同δ、同B/seed的比较；旧失败行保留原错误，已有完成比较保持只读可读。`retry_of`已有后继的失败行不再阻塞；其后继在同状态时阻塞。阻塞按研究判定，别的研究的未完成比较不影响本研究。
+
+开始比较后修改样本批注只改当前研究记录，不进入已冻结快照；`frozen.annotations_hash`与`labels_hash`证明批注与组标签未被回写。`SensitivityComparison`快照不通过API详情返回（仅返回冻结摘要与结果）。
+
 ## 工程与开发
 
 Vue3.5/Pinia3/VueRouter4/TypeScript5.7/Vite6.4.6；Python3.11/FastAPI0.115/SQLAlchemy2/NumPy2.2/SciPy1.15/PyMySQL1.1；MySQL8/Redis7/Nginx1.27。后端真算所有变换、SS、R²与置换，前端只展示真实结果。
@@ -94,6 +105,6 @@ npm run dev
 
 `backend/src/{routes,controllers,services,models,schemas,middlewares,utils,constants,config}` 按来源、变换、PERMANOVA、运行、审阅和横切拆分；`backend/scripts/seed_demo.py`；migration为可选索引，metadata首次建表，非独立全量DDL。`frontend/src/{api,stores,types,components/common,hooks,pages,router,utils,constants}` 为Vue应用。
 
-RunSummary跨首页/结果/审阅，GroupProfiles跨首页/结果，CompositionMatrix跨来源/结果，另有StudySelector、PermutationPlot及通用DataTable/Notice/StatusBadge。两hooks useResearch/useAction及utils处理公共状态。角色枚举backend/constants/roles与frontend/constants/enums参与鉴权/角色显示，队列状态backend/constants/status与前端RunStatus参与worker/StatusBadge，审阅Literal在backend/schemas/note和model/service/前端ReviewStatus。
+RunSummary跨首页/结果/审阅，GroupProfiles跨首页/结果，CompositionMatrix跨来源/结果，SensitivityPanel展示敏感性比较逐δ结论，另有StudySelector、PermutationPlot及通用DataTable/Notice/StatusBadge。两hooks useResearch/useAction及utils处理公共状态。角色枚举backend/constants/roles与frontend/constants/enums参与鉴权/角色显示，队列状态backend/constants/status与前端RunStatus参与worker/StatusBadge，审阅Literal在backend/schemas/note和model/service/前端ReviewStatus。
 
-.env含COMPOSE_PROJECT_NAME、FRONTEND_PORT、BACKEND_PORT、DB_PORT、JWT_SECRET、SEED_DEMO，DATABASE_URL/REDIS_URL由Compose定义。源码不含测试截图/日志；关键JSON/CSV、截图与已知差异在同批test-artifacts/gb-0029。当前为单worker研究系统，无来源上传、多worker去重、崩溃恢复或真实设备操作。清理仅本题：`docker compose down -v --remove-orphans`。MIT License。
+.env含COMPOSE_PROJECT_NAME、FRONTEND_PORT、BACKEND_PORT、DB_PORT、JWT_SECRET、SEED_DEMO，DATABASE_URL/REDIS_URL由Compose定义。源码不含测试截图/日志；关键JSON/CSV、截图与已知差异在同批test-artifacts/gb-0029。当前为单worker研究系统，敏感性比较与普通运行共用同一worker按队列优先出队；无来源上传、多worker去重、崩溃恢复或真实设备操作。清理仅本题：`docker compose down -v --remove-orphans`。MIT License。

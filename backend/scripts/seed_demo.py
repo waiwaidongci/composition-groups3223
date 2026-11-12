@@ -1,10 +1,11 @@
 import json
 import numpy as np
 from src.config.database import Base,engine,SessionLocal
-from src.models import User,CompositionStudy,ComponentSpec,CompositionSample,CompositionRun,ResampleNote
+from src.models import User,CompositionStudy,ComponentSpec,CompositionSample,CompositionRun,ResampleNote,SensitivityComparison
 from src.utils.security import hash_password
 from src.services.study_service import create_snapshot
 from src.services.analysis_service import analyze_composition
+from src.services.sensitivity_algorithm import compare_ratios
 
 def seed():
     Base.metadata.create_all(engine)
@@ -32,5 +33,8 @@ def seed():
             db.flush();studies.append(study)
         if not db.query(CompositionRun).filter_by(name='正组成三工艺 · 199次基线').first():
             study=studies[0];snapshot=create_snapshot(db,study);result=analyze_composition(snapshot,.001,199,2026);run=CompositionRun(name='正组成三工艺 · 199次基线',study_id=study.id,delta=.001,permutations=199,seed=2026,input_snapshot=snapshot,status='completed',result=result,owner='顾砚 · 组成研究员');db.add(run);db.flush();db.add(ResampleNote(run_id=run.id,title='首批三工艺复配补样说明',interpretation='CLR组间差异可能受离散度影响，未正式检验同质；零替换为显式假设，不能推断工艺原因。',proposal='独立补取每工艺同规模样本，复核五相通道和检出限，保留组成闭合前后记录。',status='approved',owner='顾砚 · 组成研究员',reviewer='罗岑 · 材料负责人',review_note='批准研究归档和独立补样，不把全局差异当成工艺因果或同质性证明。'))
-        db.commit();print(json.dumps({m.__tablename__:db.query(m).count() for m in [User,CompositionStudy,ComponentSpec,CompositionSample,CompositionRun,ResampleNote]},ensure_ascii=False))
+        if not db.query(SensitivityComparison).filter_by(name='LS-02零替换比例敏感性').first():
+            study=studies[1];snapshot=create_snapshot(db,study);ratios=[.0001,.001,.01,.1];result=compare_ratios(snapshot,ratios,199,2026)
+            db.add(SensitivityComparison(name='LS-02零替换比例敏感性',study_id=study.id,deltas=ratios,permutations=199,seed=2026,input_snapshot=snapshot,status='completed',result=result,owner='顾砚 · 组成研究员'))
+        db.commit();print(json.dumps({m.__tablename__:db.query(m).count() for m in [User,CompositionStudy,ComponentSpec,CompositionSample,CompositionRun,ResampleNote,SensitivityComparison]},ensure_ascii=False))
 if __name__=='__main__':seed()

@@ -1,22 +1,15 @@
-import json,time,traceback
+import time
 from pathlib import Path
-from .config.database import Base,engine,SessionLocal
-from .models import CompositionRun
-from .constants.status import RunStatus
-from .services.run_service import queue
-from .services.analysis_service import analyze_composition
-from .services.audit_service import log
-Base.metadata.create_all(engine);Path("/artifacts").mkdir(exist_ok=True)
+from .config.database import Base,engine
+from .services.queue_service import queue,RUN_QUEUE,COMPARISON_QUEUE
+from .services.job_service import process_run,process_comparison
+Base.metadata.create_all(engine)
+HEARTBEAT=Path("/artifacts/heartbeat")
 while True:
-    Path("/artifacts/heartbeat").write_text(str(time.time()))
-    job=queue.blpop("composition:jobs",timeout=2)
+    try:HEARTBEAT.parent.mkdir(parents=True,exist_ok=True);HEARTBEAT.write_text(str(time.time()))
+    except OSError:pass
+    job=queue.blpop([RUN_QUEUE,COMPARISON_QUEUE],timeout=2)
     if not job:continue
-    with SessionLocal() as db:
-        run=db.get(CompositionRun,int(job[1]))
-        if not run or run.status!=RunStatus.QUEUED:continue
-        run.status=RunStatus.RUNNING;db.commit()
-        try:
-            run.result=analyze_composition(run.input_snapshot,run.delta,run.permutations,run.seed);run.status=RunStatus.COMPLETED
-            Path(f"/artifacts/run-{run.id}.json").write_text(json.dumps(run.result,ensure_ascii=False));log(db,"worker","composition.completed",run.id)
-        except Exception as e:run.status=RunStatus.FAILED;run.error=str(e);traceback.print_exc()
-        db.commit()
+    key,value=job
+    if key==COMPARISON_QUEUE:process_comparison(int(value))
+    else:process_run(int(value))
