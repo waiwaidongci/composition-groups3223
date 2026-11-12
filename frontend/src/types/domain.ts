@@ -1,0 +1,11 @@
+export interface User{id:number;name:string;email:string;role:'admin'|'analyst'|'viewer'}
+export interface Study{id:number;code:string;name:string;description:string;source:string;default_delta:number;sample_count:number;component_count:number;group_counts:Record<string,number>;zero_rows:number;supported:boolean;reason:string}
+export interface Component{id:number;study_id:number;code:string;label:string;unit:string;position:number;meaning:string}
+export interface Sample{id:number;study_id:number;code:string;group:string;values:Record<string,number>;note:string;zero_count:number}
+export interface Transformed{sample:Sample;raw:number[];closed:number[];replaced:number[];clr:number[];zero_count:number}
+export interface GroupSummary{group:string;n:number;mean_clr:number[];mean_replaced:number[];aitchison_center:number[];mean_distance_to_centroid:number;max_distance_to_centroid:number}
+export interface Statistics{n:number;k:number;df_between:number;df_within:number;SST:number;SSW:number;SSB:number;R2:number;F:number|null;F_status:'finite'|'unbounded'|'numerical_overflow';groups:GroupSummary[];overall_mean_clr:number[];null_R2:number[];p:number;extreme:number;resolution:number;comparison_threshold:number;tail:string}
+export interface Result{algorithm_version:string;study:Study;components:Component[];transformed:Transformed[];statistics:Statistics;delta:number;seed:number;permutations:number;zero_rows:number;input_hash:string;replacement_note:string;assumptions:string;interpretation:string}
+export interface Run{id:number;name:string;study_id:number;delta:number;permutations:number;seed:number;status:'queued'|'running'|'completed'|'failed';result:Result;error:string;owner:string;created_at:string}
+export interface Note{id:number;run_id:number;title:string;interpretation:string;proposal:string;status:'submitted'|'approved'|'rejected';owner:string;reviewer:string;review_note:string;created_at:string}
+export interface Audit{id:number;actor:string;action:string;target:string;created_at:string}
